@@ -145,8 +145,8 @@ func start_producer (workload Work_load, intermediate_channel chan<- string, don
         default:
             log.Printf("[start_producer]: Unknown workload %T!\n", workload)
     }
-    close (intermediate_channel) // No effect, just to be clean
     done_channel<-struct{}{}
+    //NB: don't close intermediate_channel or there will be a race condition, as a closed channel is always ready for communication (and sends the nul value)
 }
 
 /**

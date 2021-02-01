@@ -161,7 +161,7 @@ func Get_directory_files (directory string) *[]string {
 
     s := make ([]string, len (files))
     for i, file := range files {
-        s[i] = file.Name()
+        s[i] = directory + "/" + file.Name()
     }
     return &s
 }

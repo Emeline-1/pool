@@ -31,8 +31,6 @@ func Launch_pool (n int, workload Work_load, f func (s string)) {
     job_channel := make (chan string) // Send jobs to the goroutines
     update_channel := make (chan struct{}) // Receive notification update from the goroutines
 
-    defer close (update_channel)
-    defer wait_group.Wait() // Wait for all goroutines to finish
     //defer close(job_channel) // This will cause goroutines to exit the loop on the job channel and return
 
     /* --- Launch the n workers --- */
@@ -41,14 +39,17 @@ func Launch_pool (n int, workload Work_load, f func (s string)) {
     }
 
     /* --- Launch the update mechanism --- */
+    my_channel := make (chan struct{})
+    defer close (my_channel)
     go func () {
-        fmt.Printf("\r\033[sProcessing: 0") // save the cursor position
+        fmt.Fprintf(os.Stderr, "\r\033[sProcessing: 0") // save the cursor position
         counter := 0
         for range update_channel {
             counter++
-            fmt.Printf("\r\033[u\033[KProcessing: %v", counter) // restore the cursor position and clear the line
+            fmt.Fprintf(os.Stderr, "\r\033[u\033[KProcessing: %v", counter) // restore the cursor position and clear the line
         }
-        fmt.Printf("\n")
+        fmt.Fprintf(os.Stderr, "\n")
+        my_channel <- struct{}{} // Notifies the update printing mechanism is done.
     } ()
     
 
@@ -74,6 +75,10 @@ func Launch_pool (n int, workload Work_load, f func (s string)) {
 
     go start_producer (workload, intermediate_channel, done_channel)
     start_consumer (job_channel, intermediate_channel, ctx, done_channel) // Don't exit until all jobs have been assigned to workers
+    
+    wait_group.Wait() // Wait for all goroutines to finish
+    close (update_channel) // Will cause the loop on update_channel to exit.
+    <-my_channel // Do not return until the update mechanism is not done.
 }
 
 func worker(job_channel <-chan string, update_channel chan<- struct{}, wait_group *sync.WaitGroup, f func (s string), nb int) {
@@ -104,7 +109,6 @@ func start_consumer (job_channel chan<- string, intermediate_channel <-chan stri
                 log.Print ("\n*******\nShutdown signal received\n*********\n")
                 return
             case <-done_channel: /* --- Exit when producer has transmitted all jobs to the intermediate channel --- */
-                log.Print ("[start_consumer]: Producer finished sending all jobs to intermediate channel. Closing job_channel now")
                 return
         }
     }
